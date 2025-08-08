@@ -2,8 +2,8 @@ name: Monitorear plantilla del Sevilla FC
 
 on:
   schedule:
-    - cron: "0 * * * *"  # Cada hora
-  workflow_dispatch:
+    - cron: "0 * * * *" # Cada hora
+  workflow_dispatch: {} # Permite ejecutarlo manualmente
 
 jobs:
   run-script:
