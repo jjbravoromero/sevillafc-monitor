@@ -1,57 +1,85 @@
 import asyncio
-from playwright.async_api import async_playwright
-from telegram import Bot
+import aiohttp
 import json
 import os
+from bs4 import BeautifulSoup
+from telegram import Bot
+from datetime import datetime
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-URL = "https://www.laliga.com/clubes/sevilla-fc/plantilla"
-DATA_FILE = "jugadores.json"
+# Lista de URLs a monitorizar
+EQUIPOS = {
+    "Athletic Club": "https://www.laliga.com/clubes/athletic-club/plantilla",
+    "Atlético de Madrid": "https://www.laliga.com/clubes/atletico-de-madrid/plantilla",
+    "Osasuna": "https://www.laliga.com/clubes/c-a-osasuna/plantilla",
+    "Celta": "https://www.laliga.com/clubes/rc-celta/plantilla",
+    "Alavés": "https://www.laliga.com/clubes/d-alaves/plantilla",
+    "Elche": "https://www.laliga.com/clubes/elche-c-f/plantilla",
+    "FC Barcelona": "https://www.laliga.com/clubes/fc-barcelona/plantilla",
+    "Getafe": "https://www.laliga.com/clubes/getafe-cf/plantilla",
+    "Girona": "https://www.laliga.com/clubes/girona-fc/plantilla",
+    "Levante": "https://www.laliga.com/clubes/levante-ud/plantilla",
+    "Rayo Vallecano": "https://www.laliga.com/clubes/rayo-vallecano/plantilla",
+    "Espanyol": "https://www.laliga.com/clubes/rcd-espanyol/plantilla",
+    "Mallorca": "https://www.laliga.com/clubes/rcd-mallorca/plantilla",
+    "Real Betis": "https://www.laliga.com/clubes/real-betis/plantilla",
+    "Real Madrid": "https://www.laliga.com/clubes/real-madrid/plantilla",
+    "Real Oviedo": "https://www.laliga.com/clubes/real-oviedo/plantilla",
+    "Real Sociedad": "https://www.laliga.com/clubes/real-sociedad/plantilla",
+    "Sevilla FC": "https://www.laliga.com/clubes/sevilla-fc/plantilla",
+    "Valencia CF": "https://www.laliga.com/clubes/valencia-cf/plantilla",
+    "Villarreal": "https://www.laliga.com/clubes/villarreal-cf/plantilla",
+}
 
-bot = Bot(token=TELEGRAM_TOKEN)
+DATA_FILE = "plantillas.json"
 
-async def obtener_nombres_jugadores():
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        await page.goto(URL, wait_until="networkidle")
-        await page.wait_for_timeout(5000)
-        jugadores = await page.locator("div.player-name").all_inner_texts()
-        await browser.close()
-        return sorted(set(j.strip() for j in jugadores if j.strip()))
+async def enviar_mensaje(texto):
+    bot = Bot(token=TELEGRAM_TOKEN)
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texto)
 
-def cargar_jugadores_previos():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return []
-
-def guardar_jugadores(jugadores):
-    with open(DATA_FILE, "w") as f:
-        json.dump(jugadores, f, indent=2)
-
-async def enviar_mensaje(mensaje):
-    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje)
+async def obtener_jugadores(url):
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as resp:
+            html = await resp.text()
+            soup = BeautifulSoup(html, "html.parser")
+            jugadores = [j.get_text(strip=True) for j in soup.select("span.name")]
+            return jugadores
 
 async def main():
-    jugadores_actuales = await obtener_nombres_jugadores()
-    jugadores_previos = cargar_jugadores_previos()
-
-    nuevos = list(set(jugadores_actuales) - set(jugadores_previos))
-    desaparecidos = list(set(jugadores_previos) - set(jugadores_actuales))
-
-    if nuevos or desaparecidos:
-        mensaje = "📢 Cambios en la plantilla del Sevilla FC:\n"
-        if nuevos:
-            mensaje += "\n🆕 Nuevos jugadores:\n" + "\n".join(f"🔴 {j}" for j in nuevos)
-        if desaparecidos:
-            mensaje += "\n\n❌ Jugadores que ya no están:\n" + "\n".join(f"⚪ {j}" for j in desaparecidos)
-        await enviar_mensaje(mensaje)
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            datos_guardados = json.load(f)
     else:
-        print("Sin cambios detectados.")
+        datos_guardados = {}
 
-    guardar_jugadores(jugadores_actuales)
+    cambios_detectados = []
 
-asyncio.run(main())
+    for equipo, url in EQUIPOS.items():
+        jugadores_actuales = await obtener_jugadores(url)
+        jugadores_previos = datos_guardados.get(equipo, [])
+
+        nuevos = sorted(set(jugadores_actuales) - set(jugadores_previos))
+        salientes = sorted(set(jugadores_previos) - set(jugadores_actuales))
+
+        if nuevos or salientes:
+            mensaje = f"📢 Cambios en {equipo} ({datetime.now().strftime('%d/%m/%Y %H:%M')}):\n"
+            if nuevos:
+                mensaje += f"🆕 Nuevos: {', '.join(nuevos)}\n"
+            if salientes:
+                mensaje += f"❌ Bajas: {', '.join(salientes)}\n"
+            cambios_detectados.append(mensaje)
+
+        datos_guardados[equipo] = jugadores_actuales
+
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(datos_guardados, f, ensure_ascii=False, indent=2)
+
+    if cambios_detectados:
+        await enviar_mensaje("\n\n".join(cambios_detectados))
+    else:
+        await enviar_mensaje(f"🔍 Revisión completada ({datetime.now().strftime('%d/%m/%Y %H:%M')})\nNo se han detectado cambios.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
