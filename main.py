@@ -3,83 +3,83 @@ import aiohttp
 import json
 import os
 from bs4 import BeautifulSoup
-from telegram import Bot
 from datetime import datetime
+from telegram import Bot
 
+# Variables de entorno
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Lista de URLs a monitorizar
-EQUIPOS = {
-    "Athletic Club": "https://www.laliga.com/clubes/athletic-club/plantilla",
-    "Atlético de Madrid": "https://www.laliga.com/clubes/atletico-de-madrid/plantilla",
-    "Osasuna": "https://www.laliga.com/clubes/c-a-osasuna/plantilla",
-    "Celta": "https://www.laliga.com/clubes/rc-celta/plantilla",
-    "Alavés": "https://www.laliga.com/clubes/d-alaves/plantilla",
-    "Elche": "https://www.laliga.com/clubes/elche-c-f/plantilla",
-    "FC Barcelona": "https://www.laliga.com/clubes/fc-barcelona/plantilla",
-    "Getafe": "https://www.laliga.com/clubes/getafe-cf/plantilla",
-    "Girona": "https://www.laliga.com/clubes/girona-fc/plantilla",
-    "Levante": "https://www.laliga.com/clubes/levante-ud/plantilla",
-    "Rayo Vallecano": "https://www.laliga.com/clubes/rayo-vallecano/plantilla",
-    "Espanyol": "https://www.laliga.com/clubes/rcd-espanyol/plantilla",
-    "Mallorca": "https://www.laliga.com/clubes/rcd-mallorca/plantilla",
-    "Real Betis": "https://www.laliga.com/clubes/real-betis/plantilla",
-    "Real Madrid": "https://www.laliga.com/clubes/real-madrid/plantilla",
-    "Real Oviedo": "https://www.laliga.com/clubes/real-oviedo/plantilla",
-    "Real Sociedad": "https://www.laliga.com/clubes/real-sociedad/plantilla",
-    "Sevilla FC": "https://www.laliga.com/clubes/sevilla-fc/plantilla",
-    "Valencia CF": "https://www.laliga.com/clubes/valencia-cf/plantilla",
-    "Villarreal": "https://www.laliga.com/clubes/villarreal-cf/plantilla",
-}
+URLS = [
+    "https://www.laliga.com/clubes/athletic-club/plantilla",
+    "https://www.laliga.com/clubes/atletico-de-madrid/plantilla",
+    "https://www.laliga.com/clubes/c-a-osasuna/plantilla",
+    "https://www.laliga.com/clubes/rc-celta/plantilla",
+    "https://www.laliga.com/clubes/d-alaves/plantilla",
+    "https://www.laliga.com/clubes/elche-c-f/plantilla",
+    "https://www.laliga.com/clubes/fc-barcelona/plantilla",
+    "https://www.laliga.com/clubes/getafe-cf/plantilla",
+    "https://www.laliga.com/clubes/girona-fc/plantilla",
+    "https://www.laliga.com/clubes/levante-ud/plantilla",
+    "https://www.laliga.com/clubes/rayo-vallecano/plantilla",
+    "https://www.laliga.com/clubes/rcd-espanyol/plantilla",
+    "https://www.laliga.com/clubes/rcd-mallorca/plantilla",
+    "https://www.laliga.com/clubes/real-betis/plantilla",
+    "https://www.laliga.com/clubes/real-madrid/plantilla",
+    "https://www.laliga.com/clubes/real-oviedo/plantilla",
+    "https://www.laliga.com/clubes/real-sociedad/plantilla",
+    "https://www.laliga.com/clubes/sevilla-fc/plantilla",
+    "https://www.laliga.com/clubes/valencia-cf/plantilla",
+    "https://www.laliga.com/clubes/villarreal-cf/plantilla"
+]
 
-DATA_FILE = "plantillas.json"
+ARCHIVO = "plantillas.json"
+
+async def obtener_plantilla(session, url):
+    async with session.get(url) as resp:
+        html = await resp.text()
+        soup = BeautifulSoup(html, "html.parser")
+        nombres = [p.get_text(strip=True) for p in soup.find_all("p", class_="styled__TextRegular-sc-1raci4c-0")]
+        return nombres
 
 async def enviar_mensaje(texto):
     bot = Bot(token=TELEGRAM_TOKEN)
     await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texto)
 
-async def obtener_jugadores(url):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            html = await resp.text()
-            soup = BeautifulSoup(html, "html.parser")
-            jugadores = [j.get_text(strip=True) for j in soup.select("span.name")]
-            return jugadores
-
 async def main():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            datos_guardados = json.load(f)
-    else:
-        datos_guardados = {}
+    async with aiohttp.ClientSession() as session:
+        resultados = {}
+        for url in URLS:
+            equipo = url.split("/")[4].replace("-", " ").title()
+            plantilla = await obtener_plantilla(session, url)
+            resultados[equipo] = plantilla
 
-    cambios_detectados = []
+        if os.path.exists(ARCHIVO):
+            with open(ARCHIVO, "r", encoding="utf-8") as f:
+                anterior = json.load(f)
+        else:
+            anterior = {}
 
-    for equipo, url in EQUIPOS.items():
-        jugadores_actuales = await obtener_jugadores(url)
-        jugadores_previos = datos_guardados.get(equipo, [])
+        cambios = []
+        for equipo, plantilla in resultados.items():
+            antes = set(anterior.get(equipo, []))
+            ahora = set(plantilla)
 
-        nuevos = sorted(set(jugadores_actuales) - set(jugadores_previos))
-        salientes = sorted(set(jugadores_previos) - set(jugadores_actuales))
+            nuevos = ahora - antes
+            salidos = antes - ahora
 
-        if nuevos or salientes:
-            mensaje = f"📢 Cambios en {equipo} ({datetime.now().strftime('%d/%m/%Y %H:%M')}):\n"
             if nuevos:
-                mensaje += f"🆕 Nuevos: {', '.join(nuevos)}\n"
-            if salientes:
-                mensaje += f"❌ Bajas: {', '.join(salientes)}\n"
-            cambios_detectados.append(mensaje)
+                cambios.append(f"🆕 {equipo}: {', '.join(nuevos)}")
+            if salidos:
+                cambios.append(f"❌ {equipo}: {', '.join(salidos)}")
 
-        datos_guardados[equipo] = jugadores_actuales
+        with open(ARCHIVO, "w", encoding="utf-8") as f:
+            json.dump(resultados, f, indent=2, ensure_ascii=False)
 
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(datos_guardados, f, ensure_ascii=False, indent=2)
-
-    if cambios_detectados:
-        await enviar_mensaje("\n\n".join(cambios_detectados))
-    else:
-        await enviar_mensaje(f"🔍 Revisión completada ({datetime.now().strftime('%d/%m/%Y %H:%M')})\nNo se han detectado cambios.")
+        if cambios:
+            await enviar_mensaje("📢 Cambios detectados:\n" + "\n".join(cambios))
+        else:
+            await enviar_mensaje(f"🔍 Revisión completada ({datetime.now().strftime('%d/%m/%Y %H:%M')})\nNo se han detectado cambios.")
 
 if __name__ == "__main__":
     asyncio.run(main())
