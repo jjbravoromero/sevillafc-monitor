@@ -1,42 +1,38 @@
-name: Comprobar plantillas LaLiga
+name: Monitor plantillas LaLiga
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # Cada 30 minutos
+    - cron: "*/30 * * * *" # cada 30 minutos
   workflow_dispatch:
 
 jobs:
-  check:
+  monitor:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Clonar repositorio
-        uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false  # Muy importante para usar el PAT
 
       - name: Configurar Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
       - name: Instalar dependencias
         run: |
-          pip install aiohttp beautifulsoup4 python-telegram-bot==20.3
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Ejecutar script
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: python main.py
 
-      - name: Guardar datos actualizados
+      - name: Commit y push de cambios
         uses: EndBug/add-and-commit@v9
         with:
           message: "Actualización de plantillas"
           add: "plantillas.json"
-
-      - name: Commit files
-        uses: EndBug/add-and-commit@v9
-        with:
-          message: "Actualización de plantillas"
-          add: "plantillas.json"
+          author_name: "Bot LaLiga"
+          author_email: "bot@laliga.com"
           github_token: ${{ secrets.PAT_TOKEN }}
