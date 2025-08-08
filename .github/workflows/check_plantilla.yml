@@ -33,3 +33,10 @@ jobs:
         with:
           message: "Actualización de plantillas"
           add: "plantillas.json"
+
+      - name: Commit files
+        uses: EndBug/add-and-commit@v9
+        with:
+          message: "Actualización de plantillas"
+          add: "plantillas.json"
+          github_token: ${{ secrets.PAT_TOKEN }}
