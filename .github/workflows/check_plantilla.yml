@@ -2,18 +2,15 @@ name: Monitor plantillas LaLiga
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # cada 30 minutos
+    - cron: "*/30 * * * *"  # Cada 30 minutos
   workflow_dispatch:
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repo
+      - name: Checkout repositorio
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false  # Muy importante para usar el PAT
 
       - name: Configurar Python
         uses: actions/setup-python@v5
@@ -21,18 +18,19 @@ jobs:
           python-version: '3.10'
 
       - name: Instalar dependencias
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Ejecutar script
         run: python main.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      - name: Commit y push de cambios
+      - name: Commit cambios si los hay
         uses: EndBug/add-and-commit@v9
         with:
           message: "Actualización de plantillas"
           add: "plantillas.json"
-          author_name: "Bot LaLiga"
-          author_email: "bot@laliga.com"
-          github_token: ${{ secrets.PAT_TOKEN }}
+          default_author: github_actions
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
