@@ -32,17 +32,31 @@ URLS = [
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+# Emojis por posición
+EMOJIS_POSICIONES = {
+    "Portero": "🧤",
+    "Defensa": "🛡️",
+    "Centrocampista": "🎯",
+    "Delantero": "⚡",
+}
+
 async def enviar_mensaje(mensaje):
     """Envia un mensaje a Telegram."""
     bot = Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje)
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="HTML")
 
 async def obtener_plantilla(session, url):
-    """Obtiene los nombres de jugadores de la plantilla desde la URL dada."""
+    """Obtiene nombres y posiciones de los jugadores."""
     async with session.get(url) as response:
         html = await response.text()
         soup = BeautifulSoup(html, "html.parser")
-        jugadores = [jugador.get_text(strip=True) for jugador in soup.select("p.name")]
+        jugadores_html = soup.select("div.player-info")
+        jugadores = []
+        for jugador in jugadores_html:
+            nombre = jugador.select_one("p.name").get_text(strip=True)
+            posicion = jugador.select_one("p.position").get_text(strip=True)
+            emoji = EMOJIS_POSICIONES.get(posicion, "•")
+            jugadores.append(f"{emoji} {nombre}")
         return jugadores
 
 async def main():
@@ -51,9 +65,9 @@ async def main():
         for url in URLS:
             plantilla = await obtener_plantilla(session, url)
             equipo = url.split("/")[4].replace("-", " ").title()
-            cambios_detectados.append(f"📋 {equipo}: {', '.join(plantilla)}")
+            cambios_detectados.append(f"<b>📋 {equipo}</b>\n" + "\n".join(plantilla) + "\n")
 
-        mensaje_final = f"🔍 Revisión completada ({datetime.now().strftime('%d/%m/%Y %H:%M')})\n\n"
+        mensaje_final = f"🔍 <b>Revisión completada</b> ({datetime.now().strftime('%d/%m/%Y %H:%M')})\n\n"
         mensaje_final += "\n".join(cambios_detectados)
 
         await enviar_mensaje(mensaje_final)
