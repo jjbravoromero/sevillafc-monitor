@@ -2,38 +2,23 @@ name: Monitor plantillas LaLiga
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # Cada 30 minutos
-  workflow_dispatch: # Permite ejecución manual
+    - cron: "0 * * * *"  # Cada hora
+  workflow_dispatch:
 
 jobs:
-  check-plantilla:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: 📥 Clonar repositorio
-        uses: actions/checkout@v3
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
 
-      - name: 🐍 Configurar Python
-        uses: actions/setup-python@v4
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: '3.10'
 
-      - name: 📦 Instalar dependencias
-        run: |
-          pip install requests python-telegram-bot==13.15
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
 
-      - name: ▶️ Ejecutar script
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Ejecutar script
         run: python main.py
-
-      - name: 💾 Guardar cambios en el repositorio
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add jugadores.json
-          git commit -m "Actualización de plantilla $(date '+%Y-%m-%d %H:%M')" || echo "No hay cambios para commitear"
-          git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
