@@ -1,11 +1,11 @@
-import os
-import requests
+import asyncio
+import aiohttp
 from bs4 import BeautifulSoup
 from datetime import datetime
 from telegram import Bot
-import asyncio
+import os
 
-# URLs de todas las plantillas
+# Lista de URLs de plantillas de todos los equipos de LaLiga
 URLS = [
     "https://www.laliga.com/clubes/athletic-club/plantilla",
     "https://www.laliga.com/clubes/atletico-de-madrid/plantilla",
@@ -31,70 +31,32 @@ URLS = [
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-DATA_FILE = "plantillas_actual.txt"
 
-def obtener_plantilla(url):
-    """Descarga y extrae los nombres de los jugadores de una plantilla."""
-    try:
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        jugadores = []
-        for jugador in soup.select("span.player-name"):  # Selector según la web
-            nombre = jugador.get_text(strip=True)
-            if nombre:
-                jugadores.append(nombre)
-        return jugadores
-    except Exception as e:
-        print(f"Error en {url}: {e}")
-        return []
-
-def obtener_todas_las_plantillas():
-    data = {}
-    for url in URLS:
-        equipo = url.split("/clubes/")[1].split("/")[0]
-        plantilla = obtener_plantilla(url)
-        data[equipo] = plantilla
-    return data
-
-def guardar_datos(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        for equipo, jugadores in data.items():
-            f.write(f"{equipo}:{','.join(jugadores)}\n")
-
-def cargar_datos():
-    if not os.path.exists(DATA_FILE):
-        return {}
-    data = {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        for linea in f:
-            equipo, jugadores = linea.strip().split(":")
-            data[equipo] = jugadores.split(",")
-    return data
-
-async def enviar_mensaje(texto):
+async def enviar_mensaje(mensaje):
+    """Envia un mensaje a Telegram."""
     bot = Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=texto)
+    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje)
+
+async def obtener_plantilla(session, url):
+    """Obtiene los nombres de jugadores de la plantilla desde la URL dada."""
+    async with session.get(url) as response:
+        html = await response.text()
+        soup = BeautifulSoup(html, "html.parser")
+        jugadores = [jugador.get_text(strip=True) for jugador in soup.select("p.name")]
+        return jugadores
 
 async def main():
-    datos_previos = cargar_datos()
-    datos_actuales = obtener_todas_las_plantillas()
+    async with aiohttp.ClientSession() as session:
+        cambios_detectados = []
+        for url in URLS:
+            plantilla = await obtener_plantilla(session, url)
+            equipo = url.split("/")[4].replace("-", " ").title()
+            cambios_detectados.append(f"📋 {equipo}: {', '.join(plantilla)}")
 
-    cambios = []
-    for equipo, plantilla in datos_actuales.items():
-        anterior = datos_previos.get(equipo, [])
-        if plantilla != anterior:
-            cambios.append(f"⚠️ {equipo} ha cambiado su plantilla.")
+        mensaje_final = f"🔍 Revisión completada ({datetime.now().strftime('%d/%m/%Y %H:%M')})\n\n"
+        mensaje_final += "\n".join(cambios_detectados)
 
-    guardar_datos(datos_actuales)
-
-    if cambios:
-        mensaje = f"🔍 Cambios detectados ({datetime.now().strftime('%d/%m/%Y %H:%M')}):\n" + "\n".join(cambios)
-    else:
-        mensaje = f"✅ Sin cambios en las plantillas ({datetime.now().strftime('%d/%m/%Y %H:%M')})"
-
-    await enviar_mensaje(mensaje)
+        await enviar_mensaje(mensaje_final)
 
 if __name__ == "__main__":
     asyncio.run(main())
