@@ -5,7 +5,6 @@ from datetime import datetime
 from telegram import Bot
 import os
 
-# Lista de URLs de plantillas de todos los equipos de LaLiga
 URLS = [
     "https://www.laliga.com/clubes/athletic-club/plantilla",
     "https://www.laliga.com/clubes/atletico-de-madrid/plantilla",
@@ -32,7 +31,6 @@ URLS = [
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Emojis por posición
 EMOJIS_POSICIONES = {
     "Portero": "🧤",
     "Defensa": "🛡️",
@@ -40,26 +38,27 @@ EMOJIS_POSICIONES = {
     "Delantero": "⚡",
 }
 
-async def enviar_mensaje(mensaje):
-    """Envia un mensaje a Telegram."""
+def enviar_mensaje(mensaje):
     bot = Bot(token=TELEGRAM_TOKEN)
-    await bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="HTML")
+    bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=mensaje, parse_mode="HTML")
 
 async def obtener_plantilla(session, url):
-    """Obtiene nombres y posiciones de los jugadores."""
     async with session.get(url) as response:
         html = await response.text()
         soup = BeautifulSoup(html, "html.parser")
         jugadores_html = soup.select("div.player-info")
         jugadores = []
         for jugador in jugadores_html:
-            nombre = jugador.select_one("p.name").get_text(strip=True)
-            posicion = jugador.select_one("p.position").get_text(strip=True)
-            emoji = EMOJIS_POSICIONES.get(posicion, "•")
-            jugadores.append(f"{emoji} {nombre}")
+            nombre_tag = jugador.select_one("p.name")
+            posicion_tag = jugador.select_one("p.position")
+            if nombre_tag and posicion_tag:
+                nombre = nombre_tag.get_text(strip=True)
+                posicion = posicion_tag.get_text(strip=True)
+                emoji = EMOJIS_POSICIONES.get(posicion, "•")
+                jugadores.append(f"{emoji} {nombre}")
         return jugadores
 
-async def main():
+async def main_async():
     async with aiohttp.ClientSession() as session:
         cambios_detectados = []
         for url in URLS:
@@ -69,8 +68,11 @@ async def main():
 
         mensaje_final = f"🔍 <b>Revisión completada</b> ({datetime.now().strftime('%d/%m/%Y %H:%M')})\n\n"
         mensaje_final += "\n".join(cambios_detectados)
+        return mensaje_final
 
-        await enviar_mensaje(mensaje_final)
+def main():
+    mensaje_final = asyncio.run(main_async())
+    enviar_mensaje(mensaje_final)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
